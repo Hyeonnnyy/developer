@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>불법 광고 탐지 시스템</title>
+    <style>
+        body {
+            font-family: 'Malgun Gothic', sans-serif;
+            background-color: #f4f6f9;
+            text-align: center;
+            padding-top: 50px;
+        }
+        .container {
+            background-color: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            display: inline-block;
+            width: 500px;
+        }
+        input[type="text"] {
+            width: 80%;
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        /* 로딩 화면 스타일 */
+        #loadingScreen {
+            display: none;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #007bff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        /* 결과 화면 스타일 */
+        #resultScreen {
+            display: none;
+            text-align: left;
+            width: 600px;
+        }
+        .result-card {
+            background-color: #fff3f3;
+            border: 1px solid #ffcdd2;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        .badge {
+            background-color: #dc3545;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 1. 메인 화면 (URL 입력) -->
+    <div class="container" id="mainScreen">
+        <h2>불법 광고 탐지 서비스</h2>
+        <p>검사할 웹사이트 URL을 입력해주세요.</p>
+        <input type="text" id="urlInput" placeholder="http://127.0.0.1:5500/test_site/index.html">
+        <br>
+        <button onclick="startCheck()">검사 시작</button>
+    </div>
+
+    <!-- 2. 검사 진행 화면 (로딩) -->
+    <div class="container" id="loadingScreen">
+        <h2>사이트를 분석 중입니다</h2>
+        <div class="spinner"></div>
+        <p id="loadingStatus">서버에 요청 전송 중...</p>
+    </div>
+
+    <!-- 3. 결과 화면 -->
+    <div class="container" id="resultScreen">
+        <h2>🔍 검사 결과 보고서</h2>
+        <p><strong>입력한 URL:</strong> <span id="resultUrl"></span></p>
+        <hr>
+        <h3 id="resultSummary">탐지된 위반 사항 (총 0건)</h3>
+        
+        <!-- 동적으로 위반 카드가 들어갈 자리 -->
+        <div id="violationListContainer"></div>
+
+        <br>
+        <button onclick="location.reload()" style="width: 100%;">처음으로 돌아가기</button>
+    </div>
+
+    <script>
+        async function startCheck() {
+            const url = document.getElementById('urlInput').value;
+            if (!url) {
+                alert("URL을 입력해주세요!");
+                return;
+            }
+
+            // 결과 화면에 입력한 URL 반영
+            document.getElementById('resultUrl').innerText = url;
+
+            // 메인 화면 숨기고 로딩 화면 보여주기
+            document.getElementById('mainScreen').style.display = 'none';
+            document.getElementById('loadingScreen').style.display = 'inline-block';
+            
+            const statusText = document.getElementById('loadingStatus');
+            statusText.innerText = "크롤러 및 탐지 모듈 실행 중...";
+
+            try {
+                // 파이썬 백엔드 서버로 실제 POST 요청 보내기
+                const response = await fetch('http://127.0.0.1:5000/api/detect', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ url: url })
+                });
+
+                if (!response.ok) {
+                    throw new Error("서버 응답에 실패했습니다.");
+                }
+
+                const data = await response.json();
+                console.log("서버 응답 데이터:", data);
+
+                // 결과 개수 업데이트
+                document.getElementById('resultSummary').innerText = `탐지된 위반 사항 (총 ${data.total_violations}건)`;
+
+                // 위반 카드 리스트 초기화 후 동적 생성
+                const container = document.getElementById('violationListContainer');
+                container.innerHTML = '';
+
+                if (data.violations.length === 0) {
+                    container.innerHTML = '<p style="text-align: center; color: #666;">위반 사항이 검출되지 않았습니다.</p>';
+                } else {
+                    data.violations.forEach(item => {
+                        const card = document.createElement('div');
+                        card.className = 'result-card';
+                        card.innerHTML = `
+                            <span class="badge">위반 (${item.location})</span>
+                            <p><strong>판정:</strong> ${item.category}</p>
+                            <p style="font-size: 14px; color: #666;">검출 내용: "${item.text}"</p>
+                        `;
+                        container.appendChild(card);
+                    });
+                }
+
+                // 로딩 화면 숨기고 결과 화면 보여주기
+                document.getElementById('loadingScreen').style.display = 'none';
+                document.getElementById('resultScreen').style.display = 'inline-block';
+
+            } catch (error) {
+                console.error("통신 에러:", error);
+                alert("백엔드 서버와 통신할 수 없습니다. 터미널에 `python app.py`가 켜져 있는지 확인해주세요!");
+                location.reload();
+            }
+        }
+    </script>
+
+</body>
+</html>
